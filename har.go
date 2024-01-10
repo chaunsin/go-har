@@ -37,6 +37,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -276,9 +277,13 @@ func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Re
 	return receipt, nil
 }
 
-func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withCookie bool) (*http.Response, error) {
+func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withCookie bool) (resp *http.Response, err error) {
 	defer func() {
-		if err := recover(); err != nil {
+		if x := recover(); x != nil {
+			buf := make([]byte, 64<<10)
+			buf = buf[:runtime.Stack(buf, false)]
+			log.Printf("go-car: execute request failed: %s\n%s", x, buf)
+			err = fmt.Errorf("go-car: execute request failed: %s", x)
 			return
 		}
 	}()
@@ -288,7 +293,8 @@ func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withC
 		return nil, fmt.Errorf("EntryToRequest: %w", err)
 	}
 	request.WithContext(ctx)
-	return cli.Do(request)
+	resp, err = cli.Do(request)
+	return
 }
 
 // NewRequest .

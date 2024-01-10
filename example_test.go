@@ -23,7 +23,12 @@
 
 package go_har
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"io"
+	"log"
+)
 
 func ExampleParse() {
 	path := "./testdata/sample.har"
@@ -35,4 +40,77 @@ func ExampleParse() {
 
 	// Output:
 	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
+}
+
+func Example_syncExecute() {
+	path := "./testdata/sample.har"
+	h, err := Parse(path)
+	if err != nil {
+		panic(err)
+	}
+
+	filter := func(e *Entry) bool {
+		if e.Request.URL == "https://music.163.com/eapi/batch" {
+			return true
+		}
+		return false
+	}
+
+	receipt, err := h.SyncExecute(context.TODO(), filter)
+	if err != nil {
+		log.Fatalf("SyncExecute: %s", err)
+	}
+	for r := range receipt {
+		if r.Error() != nil {
+			log.Fatalf("execute %s err: %s", r.Entry.Request.URL, r.Error())
+		}
+		func() {
+			defer r.Response.Body.Close()
+			body, err := io.ReadAll(r.Response.Body)
+			if err != nil {
+				log.Fatalf("readall err:%s", err)
+				return
+			}
+			fmt.Printf("url:%s status:%s body:%s\n", r.Entry.Request.URL, r.Response.Status, string(body))
+		}()
+	}
+
+	// Output:
+	// url:https://music.163.com/eapi/batch status:200 OK body:
+}
+
+func Example_execute() {
+	path := "./testdata/sample.har"
+	h, err := Parse(path)
+	if err != nil {
+		panic(err)
+	}
+
+	filter := func(e *Entry) bool {
+		if e.Request.URL == "https://music.163.com/eapi/batch" {
+			return true
+		}
+		return false
+	}
+
+	receipt, err := h.Execute(context.TODO(), filter)
+	if err != nil {
+		log.Fatalf("SyncExecute: %s", err)
+	}
+	for _, r := range receipt {
+		if r.Error() != nil {
+			log.Fatalf("execute %s err: %s", r.Entry.Request.URL, r.Error())
+		}
+		func() {
+			defer r.Response.Body.Close()
+			body, err := io.ReadAll(r.Response.Body)
+			if err != nil {
+				log.Fatalf("readall err:%s", err)
+			}
+			fmt.Printf("url:%s status:%s body:%s\n", r.Entry.Request.URL, r.Response.Status, string(body))
+		}()
+	}
+
+	// Output:
+	// url:https://music.163.com/eapi/batch status:200 OK body:
 }
