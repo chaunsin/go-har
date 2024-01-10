@@ -25,6 +25,8 @@ package go_har
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -126,14 +128,12 @@ func (h *Handler) AddRequest(id string, r *http.Request) error {
 	}
 	var entry = Entry{
 		PageRef:         id,
-		StartedDateTime: Time(time.Now().UTC()),
-		Time:            0,
+		StartedDateTime: time.Now().UTC().Format(time.RFC3339Nano),
+		Time:            -1,
 		Request:         req,
 		Response:        &Response{},
 		Cache:           &Cache{},
 		Timings:         &Timings{},
-		ServerIPAddress: "", // todo:
-		Connection:      "", // todo:
 		Comment:         h.comment,
 	}
 
@@ -161,7 +161,8 @@ func (h *Handler) AddResponse(id string, resp *http.Response) error {
 	if e, ok := h.entries[id]; ok {
 		nr.Comment = h.comment
 		e.Response = nr
-		e.Time = time.Since(time.Time(e.StartedDateTime)).Microseconds()
+		t, _ := ParseISO8601(e.StartedDateTime)
+		e.Time = time.Since(t).Microseconds()
 		for _, e := range h.har.Log.Entries {
 			if e.PageRef != "" && e.PageRef == id {
 				e.Response = nr
@@ -169,10 +170,6 @@ func (h *Handler) AddResponse(id string, resp *http.Response) error {
 		}
 	}
 	return nil
-}
-
-func (h *Handler) Handler() http.Handler {
-	return h
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -187,6 +184,111 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(h.har); err != nil {
 		log.Printf("Encode:%s", err)
 	}
+}
+
+// SyncExecute concurrent execution request
+func (h *Handler) SyncExecute(ctx context.Context, filter func(e *Entry) bool) (<-chan Receipt, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	h.mu.Lock()
+	var job []*Entry
+	for _, entry := range h.har.Log.Entries {
+		if !filter(entry) {
+			continue
+		}
+		job = append(job, entry)
+	}
+	h.mu.Unlock()
+
+	if len(job) <= 0 {
+		receipt := make(chan Receipt, 1)
+		close(receipt)
+		return receipt, nil
+	}
+
+	var (
+		receipt = make(chan Receipt, len(job))
+		wg      sync.WaitGroup
+		client  = &http.Client{
+			CheckRedirect: func(r *http.Request, via []*http.Request) error {
+				r.URL.Opaque = r.URL.Path
+				return nil
+			},
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // todo: can configurable to
+			},
+		}
+	)
+
+	for _, j := range job {
+		j := j
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			response, err := h.run(ctx, client, j, true)
+			receipt <- Receipt{Entry: j, Response: response, err: err}
+		}()
+	}
+	wg.Wait()
+	close(receipt)
+	return receipt, nil
+}
+
+// Execute Sequential synchronous execution
+func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Receipt, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	h.mu.Lock()
+	var job []*Entry
+	for _, entry := range h.har.Log.Entries {
+		if !filter(entry) {
+			continue
+		}
+		job = append(job, entry)
+	}
+	h.mu.Unlock()
+
+	if len(job) <= 0 {
+		return nil, nil
+	}
+
+	var (
+		receipt = make([]Receipt, 0, len(job))
+		client  = &http.Client{
+			CheckRedirect: func(r *http.Request, via []*http.Request) error {
+				r.URL.Opaque = r.URL.Path
+				return nil
+			},
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // todo: can configurable to
+			},
+		}
+	)
+
+	for _, j := range job {
+		response, err := h.run(ctx, client, j, true)
+		receipt = append(receipt, Receipt{Entry: j, Response: response, err: err})
+	}
+	return receipt, nil
+}
+
+func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withCookie bool) (*http.Response, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			return
+		}
+	}()
+
+	request, err := EntryToRequest(entry, withCookie)
+	if err != nil {
+		return nil, fmt.Errorf("EntryToRequest: %w", err)
+	}
+	request.WithContext(ctx)
+	return cli.Do(request)
 }
 
 // NewRequest .
@@ -235,7 +337,7 @@ func cookies(cs []*http.Cookie) []*Cookie {
 			Expires:  expires,
 			HTTPOnly: c.HttpOnly,
 			Secure:   c.Secure,
-			Comment:  false,
+			Comment:  "",
 		})
 	}
 	return hcs
@@ -436,17 +538,24 @@ func EntryToRequest(e *Entry, withCookie bool) (*http.Request, error) {
 			expires, _ = time.Parse(c.Expires, time.RFC3339Nano)
 		}
 		request.AddCookie(&http.Cookie{
-			Name:       c.Name,
-			Value:      c.Value,
-			Path:       c.Path,
-			Domain:     c.Domain,
-			Expires:    expires,
-			RawExpires: "", // todo:?
-			MaxAge:     0,
-			Secure:     c.Secure,
-			HttpOnly:   c.HTTPOnly,
-			SameSite:   0,
+			Name:     c.Name,
+			Value:    c.Value,
+			Path:     c.Path,
+			Domain:   c.Domain,
+			Expires:  expires,
+			Secure:   c.Secure,
+			HttpOnly: c.HTTPOnly,
 		})
 	}
 	return request, nil
+}
+
+type Receipt struct {
+	Entry    *Entry
+	Response *http.Response
+	err      error
+}
+
+func (r *Receipt) Error() error {
+	return r.err
 }

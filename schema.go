@@ -127,7 +127,7 @@ type Entry struct {
 	PageRef string `json:"pageref,omitempty"`
 	// Date and time stamp of the request start
 	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD).
-	StartedDateTime Time `json:"startedDateTime"`
+	StartedDateTime string `json:"startedDateTime"`
 	// Total elapsed time of the request in milliseconds. This is the sum of all
 	// timings available in the timings object (i.e. not including -1 values) .
 	Time int64 `json:"time"`
@@ -234,7 +234,7 @@ type Cookie struct {
 	// otherwise.
 	Secure bool `json:"secure,omitempty"`
 	// [optional] (new in 1.2) A comment provided by the user or the application.
-	Comment bool `json:"comment,omitempty"`
+	Comment string `json:"comment,omitempty"`
 }
 
 // NVP is simply a name/value pair with a comment

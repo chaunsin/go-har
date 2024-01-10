@@ -23,9 +23,12 @@
 
 package go_har
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
-const _format = "2006-01-02T15:04:05.999999999"
+const iso8601ext = "2006-01-02T15:04:05.999999999"
 
 type Time time.Time
 
@@ -38,35 +41,35 @@ func (t *Time) MarshalText() ([]byte, error) {
 }
 
 func (t *Time) UnmarshalJSON(text []byte) (err error) {
-	now, err := time.ParseInLocation(`"`+time.RFC3339+`"`, string(text), time.Local)
-	if err != nil {
-		now, err = time.ParseInLocation(`"`+time.RFC3339Nano+`"`, string(text), time.Local)
-		if err != nil {
-			now, err = time.ParseInLocation(`"`+_format+`"`, string(text), time.Local)
-			if err != nil {
-				return
-			}
-		}
-	}
-	*t = Time(now)
+	value, err := ParseISO8601(string(text))
+	*t = Time(value)
 	return
 }
 
 func (t *Time) UnmarshalText(text []byte) (err error) {
-	now, err := time.ParseInLocation(`"`+time.RFC3339+`"`, string(text), time.Local)
-	if err != nil {
-		now, err = time.ParseInLocation(`"`+time.RFC3339Nano+`"`, string(text), time.Local)
-		if err != nil {
-			now, err = time.ParseInLocation(`"`+_format+`"`, string(text), time.Local)
-			if err != nil {
-				return
-			}
-		}
-	}
-	*t = Time(now)
+	value, err := ParseISO8601(string(text))
+	*t = Time(value)
 	return
 }
 
 func (t *Time) String() string {
 	return time.Time(*t).String()
+}
+
+// ParseISO8601 parse ISO8601 standard format time
+func ParseISO8601(str string) (time.Time, error) {
+	if str == "" {
+		return time.Time{}, errors.New("time value is empty")
+	}
+	t, err := time.ParseInLocation(`"`+time.RFC3339+`"`, str, time.Local)
+	if err != nil {
+		t, err = time.ParseInLocation(`"`+time.RFC3339Nano+`"`, str, time.Local)
+		if err != nil {
+			t, err = time.ParseInLocation(`"`+iso8601ext+`"`, str, time.Local)
+			if err != nil {
+				return time.Time{}, err
+			}
+		}
+	}
+	return t, nil
 }

@@ -24,7 +24,9 @@
 package go_har
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -32,7 +34,76 @@ func TestParse(t *testing.T) {
 	path := "./testdata/sample.har"
 	h, err := Parse(path)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	fmt.Printf("%+v\n", h.Har())
+}
+
+func TestSyncExecute(t *testing.T) {
+	path := "./testdata/sample.har"
+	h, err := Parse(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filter := func(e *Entry) bool {
+		if e.Request.URL == "https://music.163.com/eapi/batch" {
+			return true
+		}
+		return false
+	}
+
+	receipt, err := h.SyncExecute(context.TODO(), filter)
+	if err != nil {
+		t.Fatalf("SyncExecute: %s", err)
+	}
+	for r := range receipt {
+		if r.Error() != nil {
+			t.Errorf("execute %s err: %s", r.Entry.Request.URL, r.Error())
+			continue
+		}
+		func() {
+			defer r.Response.Body.Close()
+			body, err := io.ReadAll(r.Response.Body)
+			if err != nil {
+				t.Errorf("readall err:%s", err)
+				return
+			}
+			t.Logf("url:%s status:%s body:%s\n", r.Entry.Request.URL, r.Response.Status, string(body))
+		}()
+	}
+}
+
+func TestExecute(t *testing.T) {
+	path := "./testdata/sample.har"
+	h, err := Parse(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filter := func(e *Entry) bool {
+		if e.Request.URL == "https://music.163.com/eapi/batch" {
+			return true
+		}
+		return false
+	}
+
+	receipt, err := h.Execute(context.TODO(), filter)
+	if err != nil {
+		t.Fatalf("SyncExecute: %s", err)
+	}
+	for _, r := range receipt {
+		if r.Error() != nil {
+			t.Errorf("execute %s err: %s", r.Entry.Request.URL, r.Error())
+			continue
+		}
+		func() {
+			defer r.Response.Body.Close()
+			body, err := io.ReadAll(r.Response.Body)
+			if err != nil {
+				t.Errorf("readall err:%s", err)
+			}
+			t.Logf("url:%s status:%s body:%s\n", r.Entry.Request.URL, r.Response.Status, string(body))
+		}()
+	}
 }
