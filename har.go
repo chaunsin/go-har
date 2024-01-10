@@ -26,6 +26,7 @@ package go_har
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -34,10 +35,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/chaunsin/go-har/messageview"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 type Handler struct {
@@ -54,7 +58,11 @@ func Parse(path string) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewReader(bytes.NewReader(data))
+	h, err := NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 func NewReader(r io.Reader) (*Handler, error) {
@@ -63,7 +71,7 @@ func NewReader(r io.Reader) (*Handler, error) {
 		return nil, err
 	}
 	h := NewHandler()
-	if err := h.har.UnmarshalJSON(data); err != nil {
+	if err := json.Unmarshal(data, h.har); err != nil {
 		return nil, err
 	}
 	for _, e := range h.har.Log.Entries {
@@ -78,16 +86,20 @@ func NewReader(r io.Reader) (*Handler, error) {
 
 func NewHandler() *Handler {
 	h := &Handler{
-		har: &Har{},
-		mu:  sync.Mutex{},
+		har: &Har{
+			Log: Log{
+				Version: "1.2",
+				Creator: &Creator{
+					Name:    "go-har",
+					Version: "0.0.1",
+				},
+			},
+		},
+		mu: sync.Mutex{},
 	}
 	h.SetOption(WithRequestBody(true))
 	h.SetOption(WithResponseBody(true))
 	return h
-}
-
-func (h *Handler) HAR() *Har {
-	return h.har
 }
 
 // SetOption sets configurable options on the logger.
@@ -97,20 +109,29 @@ func (h *Handler) SetOption(opts ...HandlerOption) {
 	}
 }
 
+// Har export Har structure data
+// Note: The exported data is a copy object, and modifying the Har does not affect the original value
+func (h *Handler) Har() *Har {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	har := *h.har
+	return &har
+}
+
+// AddRequest .
 func (h *Handler) AddRequest(id string, r *http.Request) error {
 	req, err := NewRequest(r, h.reqBody(r))
 	if err != nil {
 		return err
 	}
-
 	var entry = Entry{
 		PageRef:         id,
-		StartedDateTime: time.Now().UTC(),
+		StartedDateTime: Time(time.Now().UTC()),
 		Time:            0,
 		Request:         req,
 		Response:        &Response{},
-		Cache:           Cache{},
-		Timings:         Timings{},
+		Cache:           &Cache{},
+		Timings:         &Timings{},
 		ServerIPAddress: "", // todo:
 		Connection:      "", // todo:
 		Comment:         h.comment,
@@ -127,6 +148,7 @@ func (h *Handler) AddRequest(id string, r *http.Request) error {
 	return nil
 }
 
+// AddResponse .
 func (h *Handler) AddResponse(id string, resp *http.Response) error {
 	nr, err := NewResponse(resp, h.respBody(resp))
 	if err != nil {
@@ -139,7 +161,7 @@ func (h *Handler) AddResponse(id string, resp *http.Response) error {
 	if e, ok := h.entries[id]; ok {
 		nr.Comment = h.comment
 		e.Response = nr
-		e.Time = time.Since(e.StartedDateTime).Microseconds()
+		e.Time = time.Since(time.Time(e.StartedDateTime)).Microseconds()
 		for _, e := range h.har.Log.Entries {
 			if e.PageRef != "" && e.PageRef == id {
 				e.Response = nr
@@ -167,7 +189,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// NewRequest . todo: options
+// NewRequest .
 func NewRequest(req *http.Request, withBody bool) (*Request, error) {
 	r := &Request{
 		Method:      req.Method,
@@ -182,7 +204,7 @@ func NewRequest(req *http.Request, withBody bool) (*Request, error) {
 
 	for n, vs := range req.URL.Query() {
 		for _, v := range vs {
-			r.QueryString = append(r.QueryString, NVP{
+			r.QueryString = append(r.QueryString, &NVP{
 				Name:    n,
 				Value:   v,
 				Comment: "",
@@ -198,14 +220,14 @@ func NewRequest(req *http.Request, withBody bool) (*Request, error) {
 	return r, nil
 }
 
-func cookies(cs []*http.Cookie) []Cookie {
-	var hcs = make([]Cookie, 0, len(cs))
+func cookies(cs []*http.Cookie) []*Cookie {
+	var hcs = make([]*Cookie, 0, len(cs))
 	for _, c := range cs {
 		var expires string
 		if !c.Expires.IsZero() {
-			expires = c.Expires.Format(time.RFC3339)
+			expires = c.Expires.Format(time.RFC3339Nano)
 		}
-		hcs = append(hcs, Cookie{
+		hcs = append(hcs, &Cookie{
 			Name:     c.Name,
 			Value:    c.Value,
 			Path:     c.Path,
@@ -219,11 +241,11 @@ func cookies(cs []*http.Cookie) []Cookie {
 	return hcs
 }
 
-func headers(header http.Header) []NVP {
-	var hs = make([]NVP, 0, len(header))
+func headers(header http.Header) []*NVP {
+	var hs = make([]*NVP, 0, len(header))
 	for n, vs := range header {
 		for _, v := range vs {
-			hs = append(hs, NVP{
+			hs = append(hs, &NVP{
 				Name:  n,
 				Value: v,
 			})
@@ -232,7 +254,7 @@ func headers(header http.Header) []NVP {
 	return hs
 }
 
-func postData(req *http.Request, logBody bool) (*PostData, error) {
+func postData(req *http.Request, withBody bool) (*PostData, error) {
 	// If the request has no body (no Content-Length and Transfer-Encoding isn't
 	// chunked), skip the post data.
 	if req.ContentLength <= 0 && len(req.TransferEncoding) == 0 {
@@ -248,11 +270,11 @@ func postData(req *http.Request, logBody bool) (*PostData, error) {
 
 	pd := &PostData{
 		MimeType: mt,
-		Params:   []PostParam{},
+		Params:   []*PostParam{},
 		Comment:  "",
 	}
 
-	if !logBody {
+	if !withBody {
 		return pd, nil
 	}
 
@@ -284,7 +306,7 @@ func postData(req *http.Request, logBody bool) (*PostData, error) {
 			}
 			_ = p.Close()
 
-			pd.Params = append(pd.Params, PostParam{
+			pd.Params = append(pd.Params, &PostParam{
 				Name:        p.FormName(),
 				Value:       string(body),
 				FileName:    p.FileName(),
@@ -305,7 +327,7 @@ func postData(req *http.Request, logBody bool) (*PostData, error) {
 
 		for n, vs := range vs {
 			for _, v := range vs {
-				pd.Params = append(pd.Params, PostParam{
+				pd.Params = append(pd.Params, &PostParam{
 					Name:    n,
 					Value:   v,
 					Comment: "",
@@ -322,7 +344,7 @@ func postData(req *http.Request, logBody bool) (*PostData, error) {
 	return pd, nil
 }
 
-// NewResponse todo: options
+// NewResponse .
 func NewResponse(res *http.Response, withBody bool) (*Response, error) {
 	r := &Response{
 		HTTPVersion: res.Proto,
@@ -333,7 +355,7 @@ func NewResponse(res *http.Response, withBody bool) (*Response, error) {
 		Headers:     headers(res.Header),
 		Cookies:     cookies(res.Cookies()),
 		Comment:     "",
-		Content: Content{
+		Content: &Content{
 			Encoding: "base64",
 			MimeType: res.Header.Get("Content-Type"),
 			Comment:  "",
@@ -350,12 +372,12 @@ func NewResponse(res *http.Response, withBody bool) (*Response, error) {
 			return nil, err
 		}
 
-		br, err := mv.BodyReader(messageview.Decode())
+		reader, err := mv.BodyReader(messageview.Decode())
 		if err != nil {
 			return nil, err
 		}
 
-		body, err := io.ReadAll(br)
+		body, err := io.ReadAll(reader)
 		if err != nil {
 			return nil, err
 		}
@@ -366,10 +388,65 @@ func NewResponse(res *http.Response, withBody bool) (*Response, error) {
 	return r, nil
 }
 
-func ToHTTPRequest(r Request) (*http.Request, error) {
-	return nil, nil
-}
+// EntryToRequest .
+func EntryToRequest(e *Entry, withCookie bool) (*http.Request, error) {
+	var req = e.Request
+	if req == nil {
+		return nil, errors.New("entry.Request is empty")
+	}
 
-func ToHTTPResponse(r Response) (*http.Response, error) {
-	return nil, nil
+	_url, err := url.Parse(req.URL)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range req.QueryString {
+		_url.Query().Add(v.Name, v.Value)
+	}
+
+	var body string
+	if len(req.PostData.Params) == 0 {
+		body = req.PostData.Text
+	} else {
+		var form url.Values
+		for _, p := range req.PostData.Params {
+			form.Add(p.Name, p.Value)
+		}
+		body = form.Encode()
+	}
+
+	request, err := http.NewRequest(req.Method, _url.String(), strings.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range req.Headers {
+		if httpguts.ValidHeaderFieldName(h.Name) &&
+			httpguts.ValidHeaderFieldValue(h.Value) &&
+			h.Name != "Cookie" {
+			request.Header.Add(h.Name, h.Name)
+		}
+	}
+
+	if !withCookie {
+		return request, nil
+	}
+
+	for _, c := range e.Request.Cookies {
+		var expires time.Time
+		if c.Expires != "" {
+			expires, _ = time.Parse(c.Expires, time.RFC3339Nano)
+		}
+		request.AddCookie(&http.Cookie{
+			Name:       c.Name,
+			Value:      c.Value,
+			Path:       c.Path,
+			Domain:     c.Domain,
+			Expires:    expires,
+			RawExpires: "", // todo:?
+			MaxAge:     0,
+			Secure:     c.Secure,
+			HttpOnly:   c.HTTPOnly,
+			SameSite:   0,
+		})
+	}
+	return request, nil
 }

@@ -23,16 +23,50 @@
 
 package go_har
 
-import "fmt"
+import "time"
 
-func ExampleParse() {
-	path := "./testdata/sample.har"
-	h, err := Parse(path)
+const _format = "2006-01-02T15:04:05.999999999"
+
+type Time time.Time
+
+func (t *Time) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + time.RFC3339 + `"`), nil
+}
+
+func (t *Time) MarshalText() ([]byte, error) {
+	return []byte(time.Time(*t).Format(time.RFC3339)), nil
+}
+
+func (t *Time) UnmarshalJSON(text []byte) (err error) {
+	now, err := time.ParseInLocation(`"`+time.RFC3339+`"`, string(text), time.Local)
 	if err != nil {
-		panic(err)
+		now, err = time.ParseInLocation(`"`+time.RFC3339Nano+`"`, string(text), time.Local)
+		if err != nil {
+			now, err = time.ParseInLocation(`"`+_format+`"`, string(text), time.Local)
+			if err != nil {
+				return
+			}
+		}
 	}
-	fmt.Printf("%+v\n", h.Har())
+	*t = Time(now)
+	return
+}
 
-	// Output:
-	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
+func (t *Time) UnmarshalText(text []byte) (err error) {
+	now, err := time.ParseInLocation(`"`+time.RFC3339+`"`, string(text), time.Local)
+	if err != nil {
+		now, err = time.ParseInLocation(`"`+time.RFC3339Nano+`"`, string(text), time.Local)
+		if err != nil {
+			now, err = time.ParseInLocation(`"`+_format+`"`, string(text), time.Local)
+			if err != nil {
+				return
+			}
+		}
+	}
+	*t = Time(now)
+	return
+}
+
+func (t *Time) String() string {
+	return time.Time(*t).String()
 }

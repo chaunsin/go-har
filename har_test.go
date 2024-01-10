@@ -23,16 +23,16 @@
 
 package go_har
 
-import "fmt"
+import (
+	"fmt"
+	"testing"
+)
 
-func ExampleParse() {
+func TestParse(t *testing.T) {
 	path := "./testdata/sample.har"
 	h, err := Parse(path)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("%+v\n", h.Har())
-
-	// Output:
-	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
 }

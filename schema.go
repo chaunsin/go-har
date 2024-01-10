@@ -28,7 +28,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
 	"unicode/utf8"
 )
 
@@ -40,14 +39,6 @@ type Har struct {
 	Log Log `json:"log"`
 }
 
-func (h *Har) UnmarshalJSON(bytes []byte) error {
-	return json.Unmarshal(bytes, h)
-}
-
-func (h *Har) MarshalJSON() ([]byte, error) {
-	return json.Marshal(h)
-}
-
 // Log This object represents the root of the exported data.
 // This object MUST be present and its name MUST be "log". The object contains the following name/value pairs:
 type Log struct {
@@ -55,14 +46,14 @@ type Log struct {
 	Version string `json:"version"`
 	// Required. An object of type creator that contains the name and version
 	// information of the log creator application.
-	Creator Creator `json:"creator"`
+	Creator *Creator `json:"creator"`
 	// [optional]. An object of type browser that contains the name and version
 	// information of the user agent.
-	Browser Browser `json:"browser,omitempty"`
+	Browser *Browser `json:"browser,omitempty"`
 	// [optional]. An array of objects of type page, each representing one exported
 	// (tracked) page. Leave out this field if the application does not support
 	// grouping by pages.
-	Pages []Page `json:"pages,omitempty"`
+	Pages []*Page `json:"pages,omitempty"`
 	// Required. An array of objects of type entry, each representing one
 	// exported (tracked) HTTP request.
 	Entries []*Entry `json:"entries"`
@@ -104,7 +95,7 @@ type Page struct {
 	// Page title.
 	Title string `json:"title"`
 	// Detailed timing info about page load.
-	PageTimings PageTimings `json:"pageTimings"`
+	PageTimings *PageTimings `json:"pageTimings"`
 	// (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment,omitempty"`
 }
@@ -136,7 +127,7 @@ type Entry struct {
 	PageRef string `json:"pageref,omitempty"`
 	// Date and time stamp of the request start
 	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD).
-	StartedDateTime time.Time `json:"startedDateTime"`
+	StartedDateTime Time `json:"startedDateTime"`
 	// Total elapsed time of the request in milliseconds. This is the sum of all
 	// timings available in the timings object (i.e. not including -1 values) .
 	Time int64 `json:"time"`
@@ -145,9 +136,9 @@ type Entry struct {
 	// Detailed info about the response.
 	Response *Response `json:"response"`
 	// Info about cache usage.
-	Cache Cache `json:"cache"`
+	Cache *Cache `json:"cache"`
 	// Detailed timing info about request/response round trip.
-	Timings Timings `json:"timings"`
+	Timings *Timings `json:"timings"`
 	// [optional] (new in 1.2) IP address of the server that was connected
 	// (result of DNS resolution).
 	ServerIPAddress string `json:"serverIPAddress,omitempty"`
@@ -171,11 +162,11 @@ type Request struct {
 	// Request HTTP Version.
 	HTTPVersion string `json:"httpVersion"`
 	// List of cookie objects.
-	Cookies []Cookie `json:"cookies"`
+	Cookies []*Cookie `json:"cookies"`
 	// List of header objects.
-	Headers []NVP `json:"headers"`
+	Headers []*NVP `json:"headers"`
 	// List of query parameter objects.
-	QueryString []NVP `json:"queryString"`
+	QueryString []*NVP `json:"queryString"`
 	// Posted data info.
 	PostData *PostData `json:"postData"`
 	// Total number of bytes from the start of the HTTP request message until
@@ -201,11 +192,11 @@ type Response struct {
 	// Response HTTP Version.
 	HTTPVersion string `json:"httpVersion"`
 	// List of cookie objects.
-	Cookies []Cookie `json:"cookies"`
+	Cookies []*Cookie `json:"cookies"`
 	// List of header objects.
-	Headers []NVP `json:"headers"`
+	Headers []*NVP `json:"headers"`
 	// Details about the response body.
-	Content Content `json:"content"`
+	Content *Content `json:"content"`
 	// Redirection target URL from the Location response header.
 	RedirectURL string `json:"redirectURL"`
 	// Total number of bytes from the start of the HTTP response message until
@@ -255,14 +246,13 @@ type NVP struct {
 
 // PostData describes posted data, if any (embedded in <request> object).
 type PostData struct {
-	//  Mime type of posted data.
+	// Mime type of posted data.
 	MimeType string `json:"mimeType"`
-	//  List of posted parameters (in case of URL encoded parameters).
-	Params []PostParam `json:"params"`
-	//  Plain text posted data
+	// List of posted parameters (in case of URL encoded parameters).
+	Params []*PostParam `json:"params"`
+	// Plain text posted data
 	Text string `json:"text"`
-	// [optional] (new in 1.2) A comment provided by the user or the
-	// application.
+	// [optional] (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment,omitempty"`
 }
 
@@ -270,9 +260,9 @@ type PostData struct {
 type pdBinary struct {
 	MimeType string `json:"mimeType"`
 	// Params is a list of posted parameters (in case of URL encoded parameters).
-	Params   []PostParam `json:"params"`
-	Text     []byte      `json:"text"`
-	Encoding string      `json:"encoding"`
+	Params   []*PostParam `json:"params"`
+	Text     []byte       `json:"text"`
+	Encoding string       `json:"encoding"`
 }
 
 // MarshalJSON returns a JSON representation of binary PostData.
@@ -401,10 +391,10 @@ func (c Content) MarshalJSON() ([]byte, error) {
 type Cache struct {
 	// [optional] State of a cache entry before the request. Leave out this field
 	// if the information is not available.
-	BeforeRequest CacheObject `json:"beforeRequest,omitempty"`
+	BeforeRequest *CacheObject `json:"beforeRequest,omitempty"`
 	// [optional] State of a cache entry after the request. Leave out this field if
 	// the information is not available.
-	AfterRequest CacheObject `json:"afterRequest,omitempty"`
+	AfterRequest *CacheObject `json:"afterRequest,omitempty"`
 	// [optional] (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment,omitempty"`
 }
