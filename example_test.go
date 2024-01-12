@@ -25,92 +25,146 @@ package go_har
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"os"
+	"time"
 )
 
-func ExampleParse() {
-	path := "./testdata/sample.har"
+func Example() {
+	path := "./testdata/zh.wikipedia.org.har"
+	// parse har file
 	h, err := Parse(path)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Parse: %s", err)
 	}
-	fmt.Printf("%+v\n", h.Har())
+	har := h.Export().Log
+	fmt.Printf("version: %s create: %+v entries: %v\n", har.Version, har.Creator, len(har.Entries))
 
-	// Output:
-	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
-}
-
-func Example_syncExecute() {
-	path := "./testdata/sample.har"
-	h, err := Parse(path)
-	if err != nil {
-		panic(err)
-	}
-
+	// add request filter
 	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://music.163.com/eapi/batch" {
+		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
 			return true
 		}
 		return false
 	}
 
-	receipt, err := h.SyncExecute(context.TODO(), filter)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// concurrent execution http request
+	receipt, err := h.SyncExecute(ctx, filter)
 	if err != nil {
 		log.Fatalf("SyncExecute: %s", err)
 	}
 	for r := range receipt {
-		if r.Error() != nil {
-			log.Fatalf("execute %s err: %s", r.Entry.Request.URL, r.Error())
+		switch {
+		case errors.Is(r.err, context.DeadlineExceeded):
+			log.Printf("%s request is timeout!", r.Entry.Request.URL)
+			continue
+		case r.err != nil:
+			log.Printf("%s request failed: %s\n", r.Entry.Request.URL, r.Error())
+			continue
 		}
 		func() {
 			defer r.Response.Body.Close()
-			body, err := io.ReadAll(r.Response.Body)
+			_, err := io.ReadAll(r.Response.Body)
 			if err != nil {
 				log.Fatalf("readall err:%s", err)
 				return
 			}
-			fmt.Printf("url:%s status:%s body:%s\n", r.Entry.Request.URL, r.Response.Status, string(body))
+			fmt.Printf("url: %s status: %s\n", r.Entry.Request.URL, r.Response.Status)
 		}()
 	}
 
-	// Output:
-	// url:https://music.163.com/eapi/batch status:200 OK body:
-}
-
-func Example_execute() {
-	path := "./testdata/sample.har"
-	h, err := Parse(path)
+	// add a new request
+	uniqueId := "1"
+	request, err := http.NewRequest(http.MethodGet, "https://www.baidu.com", nil)
 	if err != nil {
 		panic(err)
 	}
+	if err := h.AddRequest(uniqueId, request); err != nil {
+		// err maybe unique id is repeated
+		log.Fatalf("add request failed: %s", err)
+	}
 
-	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://music.163.com/eapi/batch" {
+	// exclude other requests
+	filter = func(e *Entry) bool {
+		if e.Request.URL == "https://www.baidu.com" {
 			return true
 		}
 		return false
 	}
-
-	receipt, err := h.Execute(context.TODO(), filter)
+	// sequential execution http request
+	execReceipt, err := h.Execute(context.TODO(), filter)
 	if err != nil {
-		log.Fatalf("SyncExecute: %s", err)
+		log.Fatalf("Execute: %s", err)
 	}
-	for _, r := range receipt {
+	for _, r := range execReceipt {
 		if r.Error() != nil {
-			log.Fatalf("execute %s err: %s", r.Entry.Request.URL, r.Error())
+			log.Printf("%s request failed: %s\n", r.Entry.Request.URL, r.Error())
+			continue
 		}
 		func() {
 			defer r.Response.Body.Close()
-			body, err := io.ReadAll(r.Response.Body)
+			// read body do something's
+			_, err := io.ReadAll(r.Response.Body)
 			if err != nil {
 				log.Fatalf("readall err:%s", err)
+				return
 			}
-			fmt.Printf("url:%s status:%s body:%s\n", r.Entry.Request.URL, r.Response.Status, string(body))
+
+			// fill in response to current entry.Response
+			if err := r.FillInResponse(); err != nil {
+				log.Printf("FillInResponse: %e", err)
+			}
+
+			fmt.Printf("url: %s status: %s\n", r.Entry.Request.URL, r.Response.Status)
 		}()
 	}
 
+	// Writes the contents of the internal har json object to IO
+	if err := h.Write(io.Discard); err != nil {
+		log.Fatalf("write err:%s", err)
+	}
+
 	// Output:
-	// url:https://music.163.com/eapi/batch status:200 OK body:
+	// version: 1.2 create: &{Name:WebInspector Version:537.36 Comment:} entries: 3
+	// url: https://zh.wikipedia.org/wiki/.har status: 200 OK
+	// url: https://www.baidu.com status: 200 OK
+}
+
+func ExampleParse() {
+	path := "./testdata/zh.wikipedia.org.har"
+	h, err := Parse(path)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%+v\n", h.Export())
+
+	file, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	h, err = NewReader(file)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%+v\n", h.Export())
+
+	// user default har
+	h, err = NewHandler(nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%+v\n", h.Export())
+
+	// Output:
+	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
+	// &{Log:{Version:1.2 Creator:0xc0001ae5d0 Browser:<nil> Pages:[] Entries:[0xc00015a180] Comment:}}
+	// &{Log:{Version:1.2 Creator:0xc0001aecc0 Browser:<nil> Pages:[] Entries:[] Comment:}}
 }

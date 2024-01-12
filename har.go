@@ -61,23 +61,20 @@ func Parse(path string) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	h, err := NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	return h, nil
+	return NewReader(bytes.NewReader(data))
 }
 
 func NewReader(r io.Reader) (*Handler, error) {
-	data, err := io.ReadAll(r)
+	var har Har
+	decode := json.NewDecoder(r)
+	if err := decode.Decode(&har); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	h, err := NewHandler(&har)
 	if err != nil {
 		return nil, err
 	}
-	h := NewHandler()
-	if err := json.Unmarshal(data, h.har); err != nil {
-		return nil, err
-	}
-	for _, e := range h.har.Log.Entries {
+	for _, e := range har.Log.Entries {
 		// Since PageRef is an optional field, there will be many duplicates,
 		// so we only record records that are not empty
 		if e.PageRef != "" {
@@ -87,10 +84,10 @@ func NewReader(r io.Reader) (*Handler, error) {
 	return h, nil
 }
 
-func NewHandler() *Handler {
+func NewHandler(har *Har) (*Handler, error) {
 	h := &Handler{
 		har: &Har{
-			Log: Log{
+			Log: &Log{
 				Version: "1.2",
 				Creator: &Creator{
 					Name:    "go-har",
@@ -98,11 +95,18 @@ func NewHandler() *Handler {
 				},
 			},
 		},
-		mu: sync.Mutex{},
+		mu:      sync.Mutex{},
+		entries: make(map[string]*Entry),
+	}
+	if har != nil {
+		h.har = har
+	}
+	if err := har.Validate(); err != nil {
+		return nil, err
 	}
 	h.SetOption(WithRequestBody(true))
 	h.SetOption(WithResponseBody(true))
-	return h
+	return h, nil
 }
 
 // SetOption sets configurable options on the logger.
@@ -112,13 +116,45 @@ func (h *Handler) SetOption(opts ...HandlerOption) {
 	}
 }
 
-// Har export Har structure data
+// Export export Har structure data
 // Note: The exported data is a copy object, and modifying the Har does not affect the original value
-func (h *Handler) Har() *Har {
+func (h *Handler) Export() *Har {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	har := *h.har
 	return &har
+}
+
+func (h *Handler) Reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.entries = make(map[string]*Entry)
+	h.har = &Har{Log: &Log{
+		Version: "1.2",
+		Creator: &Creator{
+			Name:    "go-car",
+			Version: "0.0.1",
+		},
+	}}
+}
+
+func (h *Handler) EntryTotal() int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.har == nil || h.har.Log == nil {
+		return 0
+	}
+	return int64(len(h.har.Log.Entries))
+}
+
+func (h *Handler) Write(w io.Writer) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// SetEscapeHTML(true) ?
+	if err := json.NewEncoder(w).Encode(h.har); err != nil {
+		return err
+	}
+	return nil
 }
 
 // AddRequest .
@@ -163,7 +199,7 @@ func (h *Handler) AddResponse(id string, resp *http.Response) error {
 		nr.Comment = h.comment
 		e.Response = nr
 		t, _ := ParseISO8601(e.StartedDateTime)
-		e.Time = time.Since(t).Microseconds()
+		e.Time = float64(time.Since(t).Microseconds())
 		for _, e := range h.har.Log.Entries {
 			if e.PageRef != "" && e.PageRef == id {
 				e.Response = nr
@@ -187,30 +223,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SyncExecute concurrent execution request
+// SyncExecute concurrent execution http request
 func (h *Handler) SyncExecute(ctx context.Context, filter func(e *Entry) bool) (<-chan Receipt, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
+	var entries = make(map[int]*Entry)
 	h.mu.Lock()
-	var job []*Entry
-	for _, entry := range h.har.Log.Entries {
+	for i, entry := range h.har.Log.Entries {
 		if !filter(entry) {
 			continue
 		}
-		job = append(job, entry)
+		entries[i] = entry
 	}
 	h.mu.Unlock()
 
-	if len(job) <= 0 {
+	if len(entries) <= 0 {
 		receipt := make(chan Receipt, 1)
 		close(receipt)
 		return receipt, nil
 	}
 
 	var (
-		receipt = make(chan Receipt, len(job))
+		receipt = make(chan Receipt, len(entries))
 		wg      sync.WaitGroup
 		client  = &http.Client{
 			CheckRedirect: func(r *http.Request, via []*http.Request) error {
@@ -223,42 +259,56 @@ func (h *Handler) SyncExecute(ctx context.Context, filter func(e *Entry) bool) (
 		}
 	)
 
-	for _, j := range job {
-		j := j
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			response, err := h.run(ctx, client, j, true)
-			receipt <- Receipt{Entry: j, Response: response, err: err}
-		}()
-	}
-	wg.Wait()
-	close(receipt)
+	go func() {
+		for i, e := range entries {
+			entry := e
+			index := i
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// reset Entry.Time time ?
+				var body []byte
+				response, err := h.run(ctx, client, entry, true)
+				if err == nil && response != nil {
+					defer response.Body.Close()
+					body, err = io.ReadAll(response.Body)
+					if err != nil {
+						log.Printf("go-car: read body fialed: %s\n", err)
+					} else {
+						response.Body = io.NopCloser(bytes.NewReader(body))
+					}
+				}
+				receipt <- Receipt{h: h, index: index, Entry: entry, Response: response, body: body, err: err}
+			}()
+		}
+		wg.Wait()
+		close(receipt)
+	}()
 	return receipt, nil
 }
 
-// Execute Sequential synchronous execution
+// Execute sequential synchronous http execution
 func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Receipt, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
+	var entries = make(map[int]*Entry)
 	h.mu.Lock()
-	var job []*Entry
-	for _, entry := range h.har.Log.Entries {
+	for index, entry := range h.har.Log.Entries {
 		if !filter(entry) {
 			continue
 		}
-		job = append(job, entry)
+		entries[index] = entry
 	}
 	h.mu.Unlock()
 
-	if len(job) <= 0 {
+	if len(entries) <= 0 {
 		return nil, nil
 	}
 
 	var (
-		receipt = make([]Receipt, 0, len(job))
+		receipt = make([]Receipt, 0, len(entries))
 		client  = &http.Client{
 			CheckRedirect: func(r *http.Request, via []*http.Request) error {
 				r.URL.Opaque = r.URL.Path
@@ -270,9 +320,20 @@ func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Re
 		}
 	)
 
-	for _, j := range job {
-		response, err := h.run(ctx, client, j, true)
-		receipt = append(receipt, Receipt{Entry: j, Response: response, err: err})
+	for index, entry := range entries {
+		// reset Entry.Time time ?
+		var body []byte
+		response, err := h.run(ctx, client, entry, true)
+		if err == nil && response != nil {
+			body, err = io.ReadAll(response.Body)
+			response.Body.Close()
+			if err != nil {
+				log.Printf("go-car: read body fialed: %s", err)
+			} else {
+				response.Body = io.NopCloser(bytes.NewReader(body))
+			}
+		}
+		receipt = append(receipt, Receipt{h: h, index: index, Entry: entry, Response: response, body: body, err: err})
 	}
 	return receipt, nil
 }
@@ -299,6 +360,9 @@ func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withC
 
 // NewRequest .
 func NewRequest(req *http.Request, withBody bool) (*Request, error) {
+	if req == nil {
+		return nil, errors.New("go-car: request is empty")
+	}
 	r := &Request{
 		Method:      req.Method,
 		URL:         req.URL.String(),
@@ -454,6 +518,9 @@ func postData(req *http.Request, withBody bool) (*PostData, error) {
 
 // NewResponse .
 func NewResponse(res *http.Response, withBody bool) (*Response, error) {
+	if res == nil {
+		return nil, errors.New("go-car: response is empty")
+	}
 	r := &Response{
 		HTTPVersion: res.Proto,
 		Status:      res.StatusCode,
@@ -498,11 +565,11 @@ func NewResponse(res *http.Response, withBody bool) (*Response, error) {
 
 // EntryToRequest .
 func EntryToRequest(e *Entry, withCookie bool) (*http.Request, error) {
-	var req = e.Request
-	if req == nil {
-		return nil, errors.New("entry.Request is empty")
+	if e == nil || e.Request == nil {
+		return nil, errors.New("go-har: entry or request is empty")
 	}
 
+	var req = e.Request
 	_url, err := url.Parse(req.URL)
 	if err != nil {
 		return nil, err
@@ -512,14 +579,16 @@ func EntryToRequest(e *Entry, withCookie bool) (*http.Request, error) {
 	}
 
 	var body string
-	if len(req.PostData.Params) == 0 {
-		body = req.PostData.Text
-	} else {
-		var form url.Values
-		for _, p := range req.PostData.Params {
-			form.Add(p.Name, p.Value)
+	if req.PostData != nil {
+		if len(req.PostData.Params) == 0 {
+			body = req.PostData.Text
+		} else {
+			var form url.Values
+			for _, p := range req.PostData.Params {
+				form.Add(p.Name, p.Value)
+			}
+			body = form.Encode()
 		}
-		body = form.Encode()
 	}
 
 	request, err := http.NewRequest(req.Method, _url.String(), strings.NewReader(body))
@@ -538,7 +607,7 @@ func EntryToRequest(e *Entry, withCookie bool) (*http.Request, error) {
 		return request, nil
 	}
 
-	for _, c := range e.Request.Cookies {
+	for _, c := range req.Cookies {
 		var expires time.Time
 		if c.Expires != "" {
 			expires, _ = time.Parse(c.Expires, time.RFC3339Nano)
@@ -557,11 +626,50 @@ func EntryToRequest(e *Entry, withCookie bool) (*http.Request, error) {
 }
 
 type Receipt struct {
+	h        *Handler
+	index    int
 	Entry    *Entry
 	Response *http.Response
+	body     []byte
 	err      error
 }
 
 func (r *Receipt) Error() error {
 	return r.err
+}
+
+func (r *Receipt) Body() []byte {
+	return r.body
+}
+
+func (r *Receipt) FillInResponse(withBody ...bool) error {
+	if r.Entry == nil {
+		return errors.New("go-car: entry is nil")
+	}
+	if r.err != nil {
+		return r.err
+	}
+
+	var wb bool
+	if withBody == nil || len(withBody) <= 0 {
+		wb = r.h.respBody(r.Response)
+	} else {
+		wb = withBody[0]
+	}
+	if r.Response.Body == nil {
+		panic("is empty")
+	}
+	if wb {
+		r.Response.Body = io.NopCloser(bytes.NewReader(r.body))
+	}
+	resp, err := NewResponse(r.Response, wb)
+	if err != nil {
+		return err
+	}
+
+	r.h.mu.Lock()
+	defer r.h.mu.Unlock()
+	r.Entry.Response = resp
+	r.h.har.Log.Entries[r.index].Response = resp
+	return nil
 }

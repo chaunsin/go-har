@@ -36,7 +36,11 @@ import (
 // This specification defines an archival format for HTTP transactions that can be
 // used by a web browser to export detailed performance data about web pages it loads.
 type Har struct {
-	Log Log `json:"log"`
+	Log *Log `json:"log"`
+}
+
+func (h *Har) Validate() error {
+	return nil
 }
 
 // Log This object represents the root of the exported data.
@@ -108,11 +112,11 @@ type PageTimings struct {
 	// request.
 	// Depending on the browser, onContentLoad property represents DOMContentLoad
 	// event or document.readyState == interactive.
-	OnContentLoad int64 `json:"onContentLoad"`
+	OnContentLoad float64 `json:"onContentLoad"`
 	// Page is loaded (onLoad event fired). Number of milliseconds since page
 	// load started (page.startedDateTime). Use -1 if the timing does not apply
 	// to the current request.
-	OnLoad int64 `json:"onLoad"`
+	OnLoad float64 `json:"onLoad"`
 	// (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment"`
 }
@@ -130,7 +134,7 @@ type Entry struct {
 	StartedDateTime string `json:"startedDateTime"`
 	// Total elapsed time of the request in milliseconds. This is the sum of all
 	// timings available in the timings object (i.e. not including -1 values) .
-	Time int64 `json:"time"`
+	Time float64 `json:"time"`
 	// Detailed info about the request.
 	Request *Request `json:"request"`
 	// Detailed info about the response.
@@ -282,7 +286,8 @@ func (p *PostData) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON populates PostData based on the []byte representation of
 // the binary PostData.
 func (p *PostData) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, []byte("null")) { // conform to json.Unmarshaler spec
+	// conform to json.Unmarshaler spec
+	if bytes.Equal(data, []byte("null")) {
 		return nil
 	}
 	var enc struct {
@@ -292,7 +297,8 @@ func (p *PostData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if enc.Encoding != "base64" {
-		type noMethod PostData // avoid infinite recursion
+		// avoid infinite recursion
+		type noMethod PostData
 		return json.Unmarshal(data, (*noMethod)(p))
 	}
 	var pb pdBinary
@@ -387,6 +393,36 @@ func (c Content) MarshalJSON() ([]byte, error) {
 	return json.Marshal(cj)
 }
 
+// UnmarshalJSON unmarshal the bytes slice into Content.
+func (c Content) UnmarshalJSON(data []byte) error {
+	var cj contentJSON
+	if err := json.Unmarshal(data, &cj); err != nil {
+		return err
+	}
+
+	var (
+		txt []byte
+		err error
+	)
+	switch cj.Encoding {
+	case "base64":
+		txt, err = base64.StdEncoding.DecodeString(cj.Text)
+		if err != nil {
+			return fmt.Errorf("failed to decode base64-encoded Content.Text: %v", err)
+		}
+	case "":
+		txt = []byte(cj.Text)
+	default:
+		return fmt.Errorf("unsupported encoding for Content.Text: %s", cj.Encoding)
+	}
+
+	c.Size = cj.Size
+	c.MimeType = cj.MimeType
+	c.Text = txt
+	c.Encoding = cj.Encoding
+	return nil
+}
+
 // Cache contains info about a request coming from browser cache.
 type Cache struct {
 	// [optional] State of a cache entry before the request. Leave out this field
@@ -416,26 +452,26 @@ type CacheObject struct {
 // Timings describes various phases within request-response round trip.
 // All times are specified in milliseconds.
 type Timings struct {
-	Blocked int64 `json:"blocked,omitempty"`
 	// [optional]  Time spent in a queue waiting for a network connection. Use -1
 	// if the timing does not apply to the current request.
-	DNS int64 `json:"dns,omitempty"`
+	Blocked float64 `json:"blocked,omitempty"`
 	// [optional] - DNS resolution time. The time required to resolve a host name.
 	// Use -1 if the timing does not apply to the current request.
-	Connect int64 `json:"connect,omitempty"`
+	DNS float64 `json:"dns,omitempty"`
 	// [optional] - Time required to create TCP connection. Use -1 if the timing
 	// does not apply to the current request.
-	Send int64 `json:"send"`
+	Connect float64 `json:"connect,omitempty"`
 	// Time required to send HTTP request to the server.
-	Wait int64 `json:"wait"`
+	Send float64 `json:"send"`
 	// Waiting for a response from the server.
-	Receive int64 `json:"receive"`
+	Wait float64 `json:"wait"`
 	// Time required to read entire response from the server (or cache).
-	Ssl int64 `json:"ssl,omitempty"`
+	Receive float64 `json:"receive"`
 	// [optional] (new in 1.2) - Time required for SSL/TLS negotiation. If this
 	// field is defined then the time is also included in the connect field (to
 	// ensure backward compatibility with HAR 1.1). Use -1 if the timing does not
 	// apply to the current request.
-	Comment string `json:"comment,omitempty"`
+	Ssl float64 `json:"ssl,omitempty"`
 	// [optional] (new in 1.2) - A comment provided by the user or the application.
+	Comment string `json:"comment,omitempty"`
 }
