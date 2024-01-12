@@ -42,7 +42,7 @@ func Example() {
 		log.Fatalf("Parse: %s", err)
 	}
 	har := h.Export().Log
-	fmt.Printf("version: %s create: %+v entries: %v\n", har.Version, har.Creator, len(har.Entries))
+	fmt.Printf("version: %s create: %+v entries: %v\n", har.Version, har.Creator, h.EntryTotal())
 
 	// add request filter
 	filter := func(e *Entry) bool {
@@ -131,10 +131,15 @@ func Example() {
 		log.Fatalf("write err:%s", err)
 	}
 
+	// clean
+	h.Reset()
+	fmt.Println("entries:", h.EntryTotal())
+
 	// Output:
 	// version: 1.2 create: &{Name:WebInspector Version:537.36 Comment:} entries: 3
 	// url: https://zh.wikipedia.org/wiki/.har status: 200 OK
 	// url: https://www.baidu.com status: 200 OK
+	//
 }
 
 func ExampleParse() {
@@ -167,4 +172,5 @@ func ExampleParse() {
 	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
 	// &{Log:{Version:1.2 Creator:0xc0001ae5d0 Browser:<nil> Pages:[] Entries:[0xc00015a180] Comment:}}
 	// &{Log:{Version:1.2 Creator:0xc0001aecc0 Browser:<nil> Pages:[] Entries:[] Comment:}}
+	// entries: 0
 }

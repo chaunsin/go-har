@@ -218,6 +218,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if err := json.NewEncoder(w).Encode(h.har); err != nil {
 		log.Printf("Encode:%s", err)
 	}

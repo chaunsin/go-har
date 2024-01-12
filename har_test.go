@@ -36,7 +36,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", h.Har())
+	fmt.Printf("%+v\n", h.Export())
 }
 
 func TestSyncExecute(t *testing.T) {

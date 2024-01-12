@@ -9,10 +9,10 @@ https://w3c.github.io/web-performance/specs/HAR/Overview.html
 # Feature
 
 - supports standard HAR-1.2 content parsing
-- replay request based on har content stub content
-- http sync/async request
+- replay HTTP request based on har content stub content
+- supports HTTP synchronous requests and asynchronous concurrent requests
 - file import and export
-- can be embedded in http services to present data
+- can be embedded in HTTP services to present data
 - other conversion help functions, etc
 
 # Use restriction
@@ -25,24 +25,28 @@ https://w3c.github.io/web-performance/specs/HAR/Overview.html
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt
 	"io"
 	"log"
+	"net/http"
+	"time"
 
 	har "github.com/chaunsin/go-har"
 )
 
 func Example() {
 	path := "./testdata/zh.wikipedia.org.har"
-	h, err := Parse(path)
+	h, err := har.Parse(path)
 	if err != nil {
 		log.Fatalf("Parse: %s", err)
 	}
 	har := h.Export().Log
-	fmt.Printf("version: %s create: %+v entries: %v\n", har.Version, har.Creator, len(har.Entries))
+	fmt.Printf("version: %s create: %+v entries: %v\n", har.Version, har.Creator, h.EntryTotal())
 
 	// add request filter
-	filter := func(e *Entry) bool {
+	filter := func(e *har.Entry) bool {
 		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
 			return true
 		}
@@ -59,10 +63,10 @@ func Example() {
 	}
 	for r := range receipt {
 		switch {
-		case errors.Is(r.err, context.DeadlineExceeded):
+		case errors.Is(r.Error(), context.DeadlineExceeded):
 			log.Printf("%s request is timeout!", r.Entry.Request.URL)
 			continue
-		case r.err != nil:
+		case r.Error() != nil:
 			log.Printf("%s request failed: %s\n", r.Entry.Request.URL, r.Error())
 			continue
 		}
@@ -89,7 +93,7 @@ func Example() {
 	}
 
 	// exclude other requests
-	filter = func(e *Entry) bool {
+	filter = func(e *har.Entry) bool {
 		if e.Request.URL == "https://www.baidu.com" {
 			return true
 		}
@@ -128,10 +132,15 @@ func Example() {
 		log.Fatalf("write err:%s", err)
 	}
 
+	// clean
+	h.Reset()
+	fmt.Println("entries:", h.EntryTotal())
+
 	// Output:
 	// version: 1.2 create: &{Name:WebInspector Version:537.36 Comment:} entries: 3
 	// url: https://zh.wikipedia.org/wiki/.har status: 200 OK
 	// url: https://www.baidu.com status: 200 OK
+	// entries: 0
 }
 
 ```
