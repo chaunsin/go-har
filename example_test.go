@@ -139,7 +139,7 @@ func Example() {
 	// version: 1.2 create: &{Name:WebInspector Version:537.36 Comment:} entries: 3
 	// url: https://zh.wikipedia.org/wiki/.har status: 200 OK
 	// url: https://www.baidu.com status: 200 OK
-	//
+	// entries: 0
 }
 
 func ExampleParse() {
@@ -172,5 +172,4 @@ func ExampleParse() {
 	// &{Log:{Version:1.2 Creator:0xc00010af90 Browser:<nil> Pages:[] Entries:[0xc00015a080] Comment:}}
 	// &{Log:{Version:1.2 Creator:0xc0001ae5d0 Browser:<nil> Pages:[] Entries:[0xc00015a180] Comment:}}
 	// &{Log:{Version:1.2 Creator:0xc0001aecc0 Browser:<nil> Pages:[] Entries:[] Comment:}}
-	// entries: 0
 }

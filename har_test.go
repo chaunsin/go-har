@@ -40,14 +40,14 @@ func TestParse(t *testing.T) {
 }
 
 func TestSyncExecute(t *testing.T) {
-	path := "./testdata/sample.har"
+	path := "./testdata/zh.wikipedia.org.har"
 	h, err := Parse(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://music.163.com/eapi/batch" {
+		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
 			return true
 		}
 		return false
@@ -75,14 +75,14 @@ func TestSyncExecute(t *testing.T) {
 }
 
 func TestExecute(t *testing.T) {
-	path := "./testdata/sample.har"
+	path := "./testdata/zh.wikipedia.org.har"
 	h, err := Parse(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://music.163.com/eapi/batch" {
+		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
 			return true
 		}
 		return false

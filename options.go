@@ -28,11 +28,11 @@ import (
 	"strings"
 )
 
-// HandlerOption is a configurable setting for the logger.
-type HandlerOption func(h *Handler)
+// Option is a configurable setting for the logger.
+type Option func(h *Handler)
 
 // WithRequestBody returns an option that configures request post data logging.
-func WithRequestBody(enabled bool) HandlerOption {
+func WithRequestBody(enabled bool) Option {
 	return func(h *Handler) {
 		h.reqBody = func(*http.Request) bool {
 			return enabled
@@ -42,7 +42,7 @@ func WithRequestBody(enabled bool) HandlerOption {
 
 // WithRequestBodyByContentTypes returns an option that logs request bodies based
 // on opting in to the Content-Type of the request.
-func WithRequestBodyByContentTypes(cts ...string) HandlerOption {
+func WithRequestBodyByContentTypes(cts ...string) Option {
 	return func(h *Handler) {
 		h.reqBody = func(req *http.Request) bool {
 			rct := req.Header.Get("Content-Type")
@@ -58,7 +58,7 @@ func WithRequestBodyByContentTypes(cts ...string) HandlerOption {
 
 // WithSkipRequestBodyForContentTypes returns an option that logs request bodies based
 // on opting out of the Content-Type of the request.
-func WithSkipRequestBodyForContentTypes(cts ...string) HandlerOption {
+func WithSkipRequestBodyForContentTypes(cts ...string) Option {
 	return func(h *Handler) {
 		h.reqBody = func(req *http.Request) bool {
 			rct := req.Header.Get("Content-Type")
@@ -73,7 +73,7 @@ func WithSkipRequestBodyForContentTypes(cts ...string) HandlerOption {
 }
 
 // WithResponseBody returns an option that configures response body logging.
-func WithResponseBody(enabled bool) HandlerOption {
+func WithResponseBody(enabled bool) Option {
 	return func(h *Handler) {
 		h.respBody = func(*http.Response) bool {
 			return enabled
@@ -83,7 +83,7 @@ func WithResponseBody(enabled bool) HandlerOption {
 
 // WithResponseBodyByContentTypes returns an option that logs response bodies based
 // on opting in to the Content-Type of the response.
-func WithResponseBodyByContentTypes(cts ...string) HandlerOption {
+func WithResponseBodyByContentTypes(cts ...string) Option {
 	return func(h *Handler) {
 		h.respBody = func(res *http.Response) bool {
 			rct := res.Header.Get("Content-Type")
@@ -99,7 +99,7 @@ func WithResponseBodyByContentTypes(cts ...string) HandlerOption {
 
 // WithSkipResponseBodyForContentTypes returns an option that logs response bodies based
 // on opting out of the Content-Type of the response.
-func WithSkipResponseBodyForContentTypes(cts ...string) HandlerOption {
+func WithSkipResponseBodyForContentTypes(cts ...string) Option {
 	return func(h *Handler) {
 		h.respBody = func(res *http.Response) bool {
 			rct := res.Header.Get("Content-Type")
@@ -114,8 +114,22 @@ func WithSkipResponseBodyForContentTypes(cts ...string) HandlerOption {
 }
 
 // WithComment .
-func WithComment(str string) HandlerOption {
+func WithComment(str string) Option {
 	return func(h *Handler) {
 		h.comment = str
+	}
+}
+
+// WithCookie whether http requests carry cookies
+func WithCookie(c bool) Option {
+	return func(h *Handler) {
+		h.cookie = c
+	}
+}
+
+// WithTransport set http.RoundTripper
+func WithTransport(t http.RoundTripper) Option {
+	return func(h *Handler) {
+		h.transport = t
 	}
 }

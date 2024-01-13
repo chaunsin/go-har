@@ -34,6 +34,7 @@ import (
 	"log"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,12 +49,14 @@ import (
 )
 
 type Handler struct {
-	har      *Har
-	mu       sync.Mutex
-	entries  map[string]*Entry
-	comment  string
-	reqBody  func(*http.Request) bool
-	respBody func(*http.Response) bool
+	har       *Har
+	mu        sync.Mutex
+	entries   map[string]*Entry
+	transport http.RoundTripper
+	cookie    bool
+	comment   string
+	reqBody   func(*http.Request) bool
+	respBody  func(*http.Response) bool
 }
 
 func Parse(path string) (*Handler, error) {
@@ -97,6 +100,18 @@ func NewHandler(har *Har) (*Handler, error) {
 		},
 		mu:      sync.Mutex{},
 		entries: make(map[string]*Entry),
+		transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second}).DialContext,
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			ForceAttemptHTTP2:     true,
+		},
 	}
 	if har != nil {
 		h.har = har
@@ -106,11 +121,12 @@ func NewHandler(har *Har) (*Handler, error) {
 	}
 	h.SetOption(WithRequestBody(true))
 	h.SetOption(WithResponseBody(true))
+	h.SetOption(WithCookie(true))
 	return h, nil
 }
 
 // SetOption sets configurable options on the logger.
-func (h *Handler) SetOption(opts ...HandlerOption) {
+func (h *Handler) SetOption(opts ...Option) {
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -252,12 +268,10 @@ func (h *Handler) SyncExecute(ctx context.Context, filter func(e *Entry) bool) (
 		receipt = make(chan Receipt, len(entries))
 		wg      sync.WaitGroup
 		client  = &http.Client{
+			Transport: h.transport,
 			CheckRedirect: func(r *http.Request, via []*http.Request) error {
 				r.URL.Opaque = r.URL.Path
 				return nil
-			},
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // todo: can configurable to
 			},
 		}
 	)
@@ -313,12 +327,10 @@ func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Re
 	var (
 		receipt = make([]Receipt, 0, len(entries))
 		client  = &http.Client{
+			Transport: h.transport,
 			CheckRedirect: func(r *http.Request, via []*http.Request) error {
 				r.URL.Opaque = r.URL.Path
 				return nil
-			},
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // todo: can configurable to
 			},
 		}
 	)
@@ -326,7 +338,7 @@ func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Re
 	for index, entry := range entries {
 		// reset Entry.Time time ?
 		var body []byte
-		response, err := h.run(ctx, client, entry, true)
+		response, err := h.run(ctx, client, entry, h.cookie)
 		if err == nil && response != nil {
 			body, err = io.ReadAll(response.Body)
 			response.Body.Close()
@@ -660,7 +672,7 @@ func (r *Receipt) FillInResponse(withBody ...bool) error {
 		wb = withBody[0]
 	}
 	if r.Response.Body == nil {
-		panic("is empty")
+		return errors.New("go-car: response body is nil")
 	}
 	if wb {
 		r.Response.Body = io.NopCloser(bytes.NewReader(r.body))
