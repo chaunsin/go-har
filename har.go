@@ -148,7 +148,7 @@ func (h *Handler) Reset() {
 	h.har = &Har{Log: &Log{
 		Version: "1.2",
 		Creator: &Creator{
-			Name:    "go-car",
+			Name:    "go-har",
 			Version: "0.0.1",
 		},
 	}}
@@ -290,7 +290,7 @@ func (h *Handler) SyncExecute(ctx context.Context, filter func(e *Entry) bool) (
 					defer response.Body.Close()
 					body, err = io.ReadAll(response.Body)
 					if err != nil {
-						log.Printf("go-car: read body fialed: %s\n", err)
+						log.Printf("go-har: read body fialed: %s\n", err)
 					} else {
 						response.Body = io.NopCloser(bytes.NewReader(body))
 					}
@@ -343,7 +343,7 @@ func (h *Handler) Execute(ctx context.Context, filter func(e *Entry) bool) ([]Re
 			body, err = io.ReadAll(response.Body)
 			response.Body.Close()
 			if err != nil {
-				log.Printf("go-car: read body fialed: %s", err)
+				log.Printf("go-har: read body fialed: %s", err)
 			} else {
 				response.Body = io.NopCloser(bytes.NewReader(body))
 			}
@@ -358,8 +358,8 @@ func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withC
 		if x := recover(); x != nil {
 			buf := make([]byte, 64<<10)
 			buf = buf[:runtime.Stack(buf, false)]
-			log.Printf("go-car: execute request failed: %s\n%s", x, buf)
-			err = fmt.Errorf("go-car: execute request failed: %s", x)
+			log.Printf("go-har: execute request failed: %s\n%s", x, buf)
+			err = fmt.Errorf("go-har: execute request failed: %s", x)
 			return
 		}
 	}()
@@ -376,7 +376,7 @@ func (h *Handler) run(ctx context.Context, cli *http.Client, entry *Entry, withC
 // NewRequest .
 func NewRequest(req *http.Request, withBody bool) (*Request, error) {
 	if req == nil {
-		return nil, errors.New("go-car: request is empty")
+		return nil, errors.New("go-har: request is empty")
 	}
 	r := &Request{
 		Method:      req.Method,
@@ -534,7 +534,7 @@ func postData(req *http.Request, withBody bool) (*PostData, error) {
 // NewResponse .
 func NewResponse(res *http.Response, withBody bool) (*Response, error) {
 	if res == nil {
-		return nil, errors.New("go-car: response is empty")
+		return nil, errors.New("go-har: response is empty")
 	}
 	r := &Response{
 		HTTPVersion: res.Proto,
@@ -659,7 +659,7 @@ func (r *Receipt) Body() []byte {
 
 func (r *Receipt) FillInResponse(withBody ...bool) error {
 	if r.Entry == nil {
-		return errors.New("go-car: entry is nil")
+		return errors.New("go-har: entry is nil")
 	}
 	if r.err != nil {
 		return r.err
@@ -672,7 +672,7 @@ func (r *Receipt) FillInResponse(withBody ...bool) error {
 		wb = withBody[0]
 	}
 	if r.Response.Body == nil {
-		return errors.New("go-car: response body is nil")
+		return errors.New("go-har: response body is nil")
 	}
 	if wb {
 		r.Response.Body = io.NopCloser(bytes.NewReader(r.body))
