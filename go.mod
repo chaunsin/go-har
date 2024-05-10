@@ -3,8 +3,8 @@ module github.com/chaunsin/go-har
 go 1.19
 
 require (
-	github.com/google/brotli/go/cbrotli v0.0.0-20240111100437-033940f97cfa
-	golang.org/x/net v0.20.0
+	github.com/google/brotli/go/cbrotli v0.0.0-20240509194242-04388304a6f8
+	golang.org/x/net v0.25.0
 )
 
-require golang.org/x/text v0.14.0 // indirect
+require golang.org/x/text v0.15.0 // indirect
