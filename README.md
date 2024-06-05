@@ -1,12 +1,16 @@
 # go-har
 
+[![GoDoc](https://godoc.org/github.com/chaunsin/go-har?status.svg)](https://godoc.org/github.com/chaunsin/go-har) [![Go Report Card](https://goreportcard.com/badge/github.com/goharbor/harbor)](https://goreportcard.com/report/github.com/goharbor/harbor)
+
 golang parses HAR files
 
-# What is Har?
+## What is Har?
 
 https://w3c.github.io/web-performance/specs/HAR/Overview.html
 
-# Feature
+https://toolbox.googleapps.com/apps/har_analyzer/
+
+## Feature
 
 - supports standard HAR-1.2 content parsing
 - replay HTTP request based on har content stub content
@@ -15,11 +19,11 @@ https://w3c.github.io/web-performance/specs/HAR/Overview.html
 - can be embedded in HTTP services to present data
 - build HAR based on http.Request and http.Response
 
-# Use restriction
+## Use restriction
 
 - golang version >= 1.21
 
-# Example
+## Example
 
 ```go
 package main
