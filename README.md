@@ -142,4 +142,4 @@ func Example() {
 }
 ```
 
-详情可以参考 [example_test.go](./example_test.go)
+Please refer to [example_test.go](./example_test.go)
