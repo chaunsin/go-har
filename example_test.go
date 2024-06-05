@@ -35,28 +35,27 @@ import (
 )
 
 func Example() {
-	path := "./testdata/zh.wikipedia.org.har"
+	var path = "./testdata/zh.wikipedia.org.har"
 	// parse har file
-	h, err := Parse(path)
+	h, err := Parse(path, WithCookie(true))
 	if err != nil {
 		log.Fatalf("Parse: %s", err)
 	}
 	har := h.Export().Log
 	fmt.Printf("version: %s create: %+v entries: %v\n", har.Version, har.Creator, h.EntryTotal())
 
-	// add request filter
-	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
-			return true
-		}
-		return false
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
+	// construct request filter
+	filter := []RequestOption{
+		WithRequestUrlIs("https://zh.wikipedia.org/wiki/.har"),
+		WithRequestMethod("GET"),
+		// add another filter
+	}
+
 	// concurrent execution http request
-	receipt, err := h.SyncExecute(ctx, filter)
+	receipt, err := h.SyncExecute(ctx, filter...)
 	if err != nil {
 		log.Fatalf("SyncExecute: %s", err)
 	}
@@ -69,6 +68,8 @@ func Example() {
 			log.Printf("%s request failed: %s\n", r.Entry.Request.URL, r.Error())
 			continue
 		}
+
+		// Anonymous functions avoid body resource leakage
 		func() {
 			defer r.Response.Body.Close()
 			_, err := io.ReadAll(r.Response.Body)
@@ -80,7 +81,7 @@ func Example() {
 		}()
 	}
 
-	// add a new request
+	// add a new golang standard http request
 	uniqueId := "1"
 	request, err := http.NewRequest(http.MethodGet, "https://www.baidu.com", nil)
 	if err != nil {
@@ -91,15 +92,11 @@ func Example() {
 		log.Fatalf("add request failed: %s", err)
 	}
 
-	// exclude other requests
-	filter = func(e *Entry) bool {
-		if e.Request.URL == "https://www.baidu.com" {
-			return true
-		}
-		return false
-	}
+	// exclude other requests, ready for execution https://www.baidu.com
+	filter = []RequestOption{WithRequestUrlIs("https://www.baidu.com")}
+
 	// sequential execution http request
-	execReceipt, err := h.Execute(context.TODO(), filter)
+	execReceipt, err := h.Execute(context.TODO(), filter...)
 	if err != nil {
 		log.Fatalf("Execute: %s", err)
 	}
@@ -131,7 +128,7 @@ func Example() {
 		log.Fatalf("write err:%s", err)
 	}
 
-	// clean
+	// clean har
 	h.Reset()
 	fmt.Println("entries:", h.EntryTotal())
 

@@ -44,7 +44,8 @@ func (h *Har) Validate() error {
 }
 
 // Log This object represents the root of the exported data.
-// This object MUST be present and its name MUST be "log". The object contains the following name/value pairs:
+// This object MUST be present and its name MUST be "log".
+// The object contains the following name/value pairs:
 type Log struct {
 	// Required. Version number of the format.
 	Version string `json:"version"`
@@ -89,31 +90,31 @@ type Browser struct {
 // Page There is one <page> object for every exported web page and
 // one <entry> object for every HTTP request. In case when an HTTP
 // trace tool isn't able to group requests by a page, the <pages>
-// object is empty and individual requests doesn't have a parent page.
+// object is empty and individual requests don't have a parent page.
 type Page struct {
 	// Date and time stamp for the beginning of the page load
-	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD, e.g. 2009-07-24T19:20:30.45+01:00).
+	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD, e.g., 2009-07-24T19:20:30.45+01:00).
 	StartedDateTime string `json:"startedDateTime"`
 	// Unique identifier of a page within the . Entries use it to refer the parent page.
 	ID string `json:"id"`
 	// Page title.
 	Title string `json:"title"`
-	// Detailed timing info about page load.
+	// Detailed timing info about a page load.
 	PageTimings *PageTimings `json:"pageTimings"`
 	// (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment,omitempty"`
 }
 
 // PageTimings describes timings for various events (states) fired during the page load.
-// All times are specified in milliseconds. If a time info is not available appropriate field is set to -1.
+// All times are specified in milliseconds. If time info is not available, the appropriate field is set to -1.
 type PageTimings struct {
-	// Content of the page loaded. Number of milliseconds since page load started
+	// Content of the page loaded. Number of milliseconds since a page load started
 	// (page.startedDateTime). Use -1 if the timing does not apply to the current
 	// request.
 	// Depending on the browser, onContentLoad property represents DOMContentLoad
 	// event or document.readyState == interactive.
 	OnContentLoad float64 `json:"onContentLoad"`
-	// Page is loaded (onLoad event fired). Number of milliseconds since page
+	// Page is loaded (onLoad event fired). Number of milliseconds since a page
 	// load started (page.startedDateTime). Use -1 if the timing does not apply
 	// to the current request.
 	OnLoad float64 `json:"onLoad"`
@@ -123,17 +124,16 @@ type PageTimings struct {
 
 // Entry This object represents an array with all exported HTTP requests.
 // Sorting entries by startedDateTime (starting from the oldest) is
-// preferred way how to export data since it can make importing faster.
+// the preferred way how to export data since it can make importing faster.
 // However, the reader application should always make sure the array is sorted (if required for the import)
 type Entry struct {
 	// [string, unique, optional] Reference to the parent page.
 	// Leave out this field if the application does not support grouping by pages.
 	PageRef string `json:"pageref,omitempty"`
-	// Date and time stamp of the request start
-	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD).
+	// Date and time stamp of the request start (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD).
 	StartedDateTime string `json:"startedDateTime"`
 	// Total elapsed time of the request in milliseconds. This is the sum of all
-	// timings available in the timings object (i.e. not including -1 values) .
+	// timings available in the timing object (i.e., not including -1 values).
 	Time float64 `json:"time"`
 	// Detailed info about the request.
 	Request *Request `json:"request"`
@@ -141,16 +141,16 @@ type Entry struct {
 	Response *Response `json:"response"`
 	// Info about cache usage.
 	Cache *Cache `json:"cache"`
-	// Detailed timing info about request/response round trip.
+	// Detailed timing info about a request/response round trip.
 	Timings *Timings `json:"timings"`
 	// [optional] (new in 1.2) IP address of the server that was connected
 	// (result of DNS resolution).
 	ServerIPAddress string `json:"serverIPAddress,omitempty"`
 	// [optional] (new in 1.2) Unique ID of the parent TCP/IP connection, can be
-	// the client port number. Note that a port number doesn't have to be unique
+	// the client port number. Note that a port number doesn't have to be a unique
 	// identifier in cases where the port is shared for more connections. If the
 	// port isn't available for the application, any other unique connection ID
-	// can be used instead (e.g. connection index). Leave out this field if the
+	// can be used instead (e.g., connection index). Leave out this field if the
 	// application doesn't support this info.
 	Connection string `json:"connection,omitempty"`
 	// (new in 1.2) A comment provided by the user or the application.
@@ -185,7 +185,6 @@ type Request struct {
 }
 
 // Response contains detailed info about the response.
-//
 // The total response size received can be computed as follows (if both values are available):
 // var totalSize = entry.response.headersSize + entry.response.bodySize;
 type Response struct {
@@ -230,12 +229,11 @@ type Cookie struct {
 	// [optional] The host of the cookie.
 	Domain string `json:"domain,omitempty"`
 	// [optional] Cookie expiration time.
-	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD, e.g. 2009-07-24T19:20:30.123+02:00).
+	// (ISO 8601 YYYY-MM-DDThh:mm:ss.sTZD, e.g., 2009-07-24T19:20:30.123+02:00).
 	Expires string `json:"expires,omitempty"`
 	// [optional] Set to true if the cookie is HTTP only, false otherwise.
 	HTTPOnly bool `json:"httpOnly,omitempty"`
-	// [optional] (new in 1.2) True if the cookie was transmitted over ssl, false
-	// otherwise.
+	// [optional] (new in 1.2) True if the cookie was transmitted over ssl, false otherwise.
 	Secure bool `json:"secure,omitempty"`
 	// [optional] (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment,omitempty"`
@@ -272,7 +270,8 @@ type pdBinary struct {
 // MarshalJSON returns a JSON representation of binary PostData.
 func (p *PostData) MarshalJSON() ([]byte, error) {
 	if utf8.ValidString(p.Text) {
-		type noMethod PostData // avoid infinite recursion
+		// avoid infinite recursion
+		type noMethod PostData
 		return json.Marshal((*noMethod)(p))
 	}
 	return json.Marshal(pdBinary{
@@ -319,7 +318,7 @@ type PostParam struct {
 	Value string `json:"value,omitempty"`
 	// [optional] name of a posted file.
 	FileName string `json:"fileName,omitempty"`
-	// [optional] content type of a posted file.
+	// [optional] content type of posted file.
 	ContentType string `json:"contentType,omitempty"`
 	// [optional] (new in 1.2) A comment provided by the user or the application.
 	Comment string `json:"comment,omitempty"`
@@ -340,13 +339,13 @@ type Content struct {
 	MimeType string `json:"mimeType"`
 	// [optional] Response body sent from the server or loaded from the browser
 	// cache. This field is populated with textual content only. The text field
-	// is either HTTP decoded text or a encoded (e.g. "base64") representation of
+	// is either HTTP decoded text or an encoded (e.g. "base64") representation of
 	// the response body. Leave out this field if the information is not
 	// available.
 	Text []byte `json:"text,omitempty"`
-	// [optional] (new in 1.2) Encoding used for response text field e.g
+	// [optional] (new in 1.2) Encoding used for response text field e.g.
 	// "base64". Leave out this field if the text field is HTTP decoded
-	// (decompressed & unchunked), than trans-coded from its original character
+	// (decompressed & unchunked), then trans-coded from its original character
 	// set into UTF-8.
 	Encoding string `json:"encoding,omitempty"`
 	// [optional] (new in 1.2) A comment provided by the user or the application.
@@ -361,7 +360,7 @@ type contentJSON struct {
 
 	// Text contains the response body sent from the server or loaded from the
 	// browser cache. This field is populated with textual content only. The text
-	// field is either HTTP decoded text or a encoded (e.g. "base64")
+	// field is either HTTP decoded text or an encoded (e.g. "base64")
 	// representation of the response body. Leave out this field if the
 	// information is not available.
 	Text string `json:"text,omitempty"`
@@ -449,10 +448,10 @@ type CacheObject struct {
 	Comment string `json:"comment,omitempty"`
 }
 
-// Timings describes various phases within request-response round trip.
+// Timings describe various phases within a request-response round trip.
 // All times are specified in milliseconds.
 type Timings struct {
-	// [optional]  Time spent in a queue waiting for a network connection. Use -1
+	// [optional] Time spent in a queue waiting for a network connection. Use -1
 	// if the timing does not apply to the current request.
 	Blocked float64 `json:"blocked,omitempty"`
 	// [optional] - DNS resolution time. The time required to resolve a host name.
@@ -461,14 +460,14 @@ type Timings struct {
 	// [optional] - Time required to create TCP connection. Use -1 if the timing
 	// does not apply to the current request.
 	Connect float64 `json:"connect,omitempty"`
-	// Time required to send HTTP request to the server.
+	// Time required to send an HTTP request to the server.
 	Send float64 `json:"send"`
 	// Waiting for a response from the server.
 	Wait float64 `json:"wait"`
-	// Time required to read entire response from the server (or cache).
+	// Time required to read the entire response from the server (or cache).
 	Receive float64 `json:"receive"`
 	// [optional] (new in 1.2) - Time required for SSL/TLS negotiation. If this
-	// field is defined then the time is also included in the connect field (to
+	// field is defined, then the time is also included in the connected field (to
 	// ensure backward compatibility with HAR 1.1). Use -1 if the timing does not
 	// apply to the current request.
 	Ssl float64 `json:"ssl,omitempty"`

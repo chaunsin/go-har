@@ -46,12 +46,7 @@ func TestSyncExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
-			return true
-		}
-		return false
-	}
+	filter := WithRequestUrlIs("https://zh.wikipedia.org/wiki/.har")
 
 	receipt, err := h.SyncExecute(context.TODO(), filter)
 	if err != nil {
@@ -81,12 +76,7 @@ func TestExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filter := func(e *Entry) bool {
-		if e.Request.URL == "https://zh.wikipedia.org/wiki/.har" {
-			return true
-		}
-		return false
-	}
+	filter := WithRequestUrlIs("https://zh.wikipedia.org/wiki/.har")
 
 	receipt, err := h.Execute(context.TODO(), filter)
 	if err != nil {

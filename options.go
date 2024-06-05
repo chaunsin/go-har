@@ -25,18 +25,19 @@ package go_har
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 )
 
-// Option is a configurable setting for the logger.
+// Option represents the optional function
 type Option func(h *Handler)
 
 // WithRequestBody returns an option that configures request post data logging.
 func WithRequestBody(enabled bool) Option {
 	return func(h *Handler) {
-		h.reqBody = func(*http.Request) bool {
+		h.reqBody = append(h.reqBody, func(*http.Request) bool {
 			return enabled
-		}
+		})
 	}
 }
 
@@ -44,7 +45,7 @@ func WithRequestBody(enabled bool) Option {
 // on opting in to the Content-Type of the request.
 func WithRequestBodyByContentTypes(cts ...string) Option {
 	return func(h *Handler) {
-		h.reqBody = func(req *http.Request) bool {
+		h.reqBody = append(h.reqBody, func(req *http.Request) bool {
 			rct := req.Header.Get("Content-Type")
 			for _, ct := range cts {
 				if strings.HasPrefix(strings.ToLower(rct), strings.ToLower(ct)) {
@@ -52,15 +53,15 @@ func WithRequestBodyByContentTypes(cts ...string) Option {
 				}
 			}
 			return false
-		}
+		})
 	}
 }
 
-// WithSkipRequestBodyForContentTypes returns an option that logs request bodies based
-// on opting out of the Content-Type of the request.
+// WithSkipRequestBodyForContentTypes returns an option that logs request bodies
+// based on opting out of the Content-Type of the request.
 func WithSkipRequestBodyForContentTypes(cts ...string) Option {
 	return func(h *Handler) {
-		h.reqBody = func(req *http.Request) bool {
+		h.reqBody = append(h.reqBody, func(req *http.Request) bool {
 			rct := req.Header.Get("Content-Type")
 			for _, ct := range cts {
 				if strings.HasPrefix(strings.ToLower(rct), strings.ToLower(ct)) {
@@ -68,16 +69,16 @@ func WithSkipRequestBodyForContentTypes(cts ...string) Option {
 				}
 			}
 			return true
-		}
+		})
 	}
 }
 
 // WithResponseBody returns an option that configures response body logging.
 func WithResponseBody(enabled bool) Option {
 	return func(h *Handler) {
-		h.respBody = func(*http.Response) bool {
+		h.respBody = append(h.respBody, func(*http.Response) bool {
 			return enabled
-		}
+		})
 	}
 }
 
@@ -85,7 +86,7 @@ func WithResponseBody(enabled bool) Option {
 // on opting in to the Content-Type of the response.
 func WithResponseBodyByContentTypes(cts ...string) Option {
 	return func(h *Handler) {
-		h.respBody = func(res *http.Response) bool {
+		h.respBody = append(h.respBody, func(res *http.Response) bool {
 			rct := res.Header.Get("Content-Type")
 			for _, ct := range cts {
 				if strings.HasPrefix(strings.ToLower(rct), strings.ToLower(ct)) {
@@ -93,15 +94,15 @@ func WithResponseBodyByContentTypes(cts ...string) Option {
 				}
 			}
 			return false
-		}
+		})
 	}
 }
 
-// WithSkipResponseBodyForContentTypes returns an option that logs response bodies based
-// on opting out of the Content-Type of the response.
+// WithSkipResponseBodyForContentTypes returns an option that logs response bodies
+// based on opting out of the Content-Type of the response.
 func WithSkipResponseBodyForContentTypes(cts ...string) Option {
 	return func(h *Handler) {
-		h.respBody = func(res *http.Response) bool {
+		h.respBody = append(h.respBody, func(res *http.Response) bool {
 			rct := res.Header.Get("Content-Type")
 			for _, ct := range cts {
 				if strings.HasPrefix(strings.ToLower(rct), strings.ToLower(ct)) {
@@ -109,7 +110,7 @@ func WithSkipResponseBodyForContentTypes(cts ...string) Option {
 				}
 			}
 			return true
-		}
+		})
 	}
 }
 
@@ -133,3 +134,127 @@ func WithTransport(t http.RoundTripper) Option {
 		h.transport = t
 	}
 }
+
+// WithRequestConcurrency Number of concurrent http requests allowed. 0 indicates no limit.
+func WithRequestConcurrency(num uint64) Option {
+	return func(ctx *Handler) {
+		ctx.concurrency.Store(int64(num))
+	}
+}
+
+// WithLogger Register a logger object interface
+func WithLogger(l Logger) Option {
+	return func(ctx *Handler) {
+		ctx.log = l
+	}
+}
+
+// RequestOption SyncExecute() or Execute() represents the optional function
+// TODO: The current condition is a OR condition, which needs to be changed into an AND policy
+type RequestOption func(ctx *Handler, e *Entry) bool
+
+// WithRequestUrlIs .
+func WithRequestUrlIs(urls ...string) RequestOption {
+	var urlSet = make(map[string]struct{}, len(urls))
+	for _, u := range urls {
+		urlSet[u] = struct{}{}
+	}
+	return func(ctx *Handler, e *Entry) bool {
+		_, ok := urlSet[e.Request.URL]
+		return ok
+	}
+}
+
+// WithRequestUrlPrefix .
+func WithRequestUrlPrefix(prefix string) RequestOption {
+	return func(ctx *Handler, e *Entry) bool {
+		return strings.HasPrefix(e.Request.URL, prefix)
+	}
+}
+
+// WithRequestUrlRegexp .
+func WithRequestUrlRegexp(regexps *regexp.Regexp) RequestOption {
+	return func(ctx *Handler, e *Entry) bool {
+		if regexps == nil {
+			return false
+		}
+		return regexps.MatchString(e.Request.URL)
+	}
+}
+
+// WithRequestHostIs .
+func WithRequestHostIs(hosts ...string) RequestOption {
+	var hostSet = make(map[string]struct{}, len(hosts))
+	for _, u := range hosts {
+		hostSet[u] = struct{}{}
+	}
+	return func(ctx *Handler, e *Entry) bool {
+		_, ok := hostSet[e.Request.URL]
+		return ok
+	}
+}
+
+// WithRequestHostRegexp .
+func WithRequestHostRegexp(regexps ...*regexp.Regexp) RequestOption {
+	return func(ctx *Handler, e *Entry) bool {
+		for _, r := range regexps {
+			if r.MatchString(e.Request.URL) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// WithRequestMethod .
+func WithRequestMethod(methods ...string) RequestOption {
+	return func(ctx *Handler, e *Entry) bool {
+		for _, r := range methods {
+			if e.Request.Method == strings.ToUpper(r) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// WithSkipRequestMethod .
+func WithSkipRequestMethod(methods ...string) RequestOption {
+	return func(ctx *Handler, e *Entry) bool {
+		for _, r := range methods {
+			if e.Request.Method != strings.ToUpper(r) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+// WithRequestHandler .
+func WithRequestHandler(handler EntityHandler) RequestOption {
+	return func(ctx *Handler, e *Entry) bool {
+		return handler(e)
+	}
+}
+
+// // WithResponseStatusCode .
+// func WithResponseStatusCode(codes ...int) RequestOption {
+// 	var codeSet = make(map[int]struct{}, len(codes))
+// 	for _, c := range codes {
+// 		codeSet[c] = struct{}{}
+// 	}
+// 	return func(ctx *Handler, e *Entry) bool {
+// 		if e == nil || e.Response == nil {
+// 			return false
+// 		}
+// 		_, ok := codeSet[e.Response.Status]
+// 		return ok
+// 	}
+// }
+
+// // WithResponseHandler .
+// func WithResponseHandler(handler EntityHandler) RequestOption {
+// 	return func(h *Handler) {
+// 		h.append(nil, handler)
+// 	}
+// }
