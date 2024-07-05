@@ -324,6 +324,7 @@ func (h *Handler) SyncExecute(ctx context.Context, filter ...RequestOption) (<-c
 				response, err := h.run(ctx, client, entry, true)
 				if err == nil && response != nil {
 					defer response.Body.Close()
+					// todo: 当请求时下载文件请求时会造成内存过大，因此需要优化掉
 					body, err = io.ReadAll(response.Body)
 					if err != nil {
 						h.log.Error("go-har: read body filed: %s", err)
@@ -716,6 +717,7 @@ func (r *Receipt) Body() []byte {
 	return r.body
 }
 
+// FillInResponse TODO: 读取body会造成内存过大考虑优化
 func (r *Receipt) FillInResponse(withBody ...bool) error {
 	if r.Entry == nil {
 		return errors.New("go-har: entry is nil")

@@ -50,7 +50,7 @@ func Example() {
 	// construct request filter
 	filter := []RequestOption{
 		WithRequestUrlIs("https://zh.wikipedia.org/wiki/.har"),
-		WithRequestMethod("GET"),
+		// WithRequestMethod("GET"),
 		// add another filter
 	}
 
