@@ -26,7 +26,7 @@ import (
 	"net/http/httputil"
 	"strings"
 
-	"github.com/google/brotli/go/cbrotli"
+	"github.com/andybalholm/brotli"
 )
 
 // MessageView is a static view of an HTTP request or response.
@@ -264,7 +264,8 @@ func (mv *MessageView) BodyReader(opts ...Option) (io.ReadCloser, error) {
 	case "deflate":
 		return flate.NewReader(r), nil
 	case "br":
-		return cbrotli.NewReader(r), nil
+		r := brotli.NewReader(r)
+		return io.NopCloser(r), nil
 	default:
 		return io.NopCloser(r), nil
 	}
