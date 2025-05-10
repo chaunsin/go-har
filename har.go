@@ -648,7 +648,7 @@ func postData(req *http.Request, withBody bool) (*PostData, error) {
 		var mpr = multipart.NewReader(br, ps["boundary"])
 		for {
 			p, err := mpr.NextPart()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
