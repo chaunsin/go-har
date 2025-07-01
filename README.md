@@ -21,7 +21,7 @@ https://toolbox.googleapps.com/apps/har_analyzer/
 
 ## Use restriction
 
-- golang version >= 1.21
+- golang version >= 1.23.0
 
 ## Example
 
