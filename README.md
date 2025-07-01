@@ -2,7 +2,7 @@
 
 [![GoDoc](https://godoc.org/github.com/chaunsin/go-har?status.svg)](https://godoc.org/github.com/chaunsin/go-har) [![Go Report Card](https://goreportcard.com/badge/github.com/chaunsin/go-har)](https://goreportcard.com/report/github.com/chaunsin/go-har)
 
-golang parses HAR files
+golang parsing and constructing HAR files
 
 ## What is Har?
 
